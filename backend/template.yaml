@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Monitus Companion - Stage 1 Simple Chat Lambda
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+
+Resources:
+  MonitusHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - "Content-Type"
+        AllowMethods:
+          - "POST"
+          - "OPTIONS"
+
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.chat.handler
+      Policies:
+        - AmazonBedrockFullAccess
+      Events:
+        ChatApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /chat
+            Method: POST
+            ApiId: !Ref MonitusHttpApi
+
+Outputs:
+  ChatApiEndpoint:
+    Description: "HTTP API Gateway endpoint URL for Stage 1 Chat"
+    Value: !Sub "https://${MonitusHttpApi}.execute-api.${AWS::Region}.amazonaws.com/chat"
