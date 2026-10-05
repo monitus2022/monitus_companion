@@ -3,6 +3,10 @@ import time
 import boto3
 from botocore.exceptions import ClientError
 
+from utils.logger import get_logger
+
+logger = get_logger("SessionStore")
+
 class SessionStore:
     """Encapsulates all DynamoDB operations for chat session history."""
 
@@ -12,31 +16,30 @@ class SessionStore:
         self.max_history_turns = max_history_turns
         self.ttl_seconds = ttl_hours * 3600
         
-        # Initialize DynamoDB resource once during class instantiation
+        logger.info(f"Initializing SessionStore. Table: '{self.table_name}' | Region: '{self.region_name}'")
         self.dynamodb = boto3.resource("dynamodb", region_name=self.region_name)
         self.table = self.dynamodb.Table(self.table_name)
 
     def get_history(self, session_id: str) -> list:
-        """Fetch past messages array for a given session ID."""
         try:
+            logger.info(f"Fetching history for session_id: '{session_id}'")
             response = self.table.get_item(Key={"session_id": session_id})
-            return response.get("Item", {}).get("messages", [])
+            messages = response.get("Item", {}).get("messages", [])
+            logger.info(f"Retrieved {len(messages)} messages for session_id: '{session_id}'")
+            return messages
         except ClientError as e:
-            print(f"[SessionStore] AWS Error fetching history for '{session_id}': {e}")
+            logger.exception(f"AWS ClientError fetching session '{session_id}'")
             return []
         except Exception as e:
-            print(f"[SessionStore] Unexpected error fetching history for '{session_id}': {e}")
+            logger.exception(f"Unexpected error fetching session '{session_id}'")
             return []
 
     def save_history(self, session_id: str, messages: list) -> bool:
-        """Save updated messages array with sliding window trimming and TTL timestamp."""
         try:
-            # Unix epoch timestamp for TTL expiry
             ttl_timestamp = int(time.time()) + self.ttl_seconds
-            
-            # Sliding window: keep only the most recent N turns
             trimmed_messages = messages[-self.max_history_turns:]
 
+            logger.info(f"Saving {len(trimmed_messages)} messages to session_id: '{session_id}'")
             self.table.put_item(
                 Item={
                     "session_id": session_id,
@@ -44,10 +47,11 @@ class SessionStore:
                     "ttl": ttl_timestamp
                 }
             )
+            logger.info(f"Successfully saved state for session_id: '{session_id}'")
             return True
         except ClientError as e:
-            print(f"[SessionStore] AWS Error saving session '{session_id}': {e}")
-            return False
+            logger.exception(f"AWS ClientError saving session '{session_id}'")
+            raise e
         except Exception as e:
-            print(f"[SessionStore] Unexpected error saving session '{session_id}': {e}")
-            return False
+            logger.exception(f"Unexpected error saving session '{session_id}'")
+            raise e
