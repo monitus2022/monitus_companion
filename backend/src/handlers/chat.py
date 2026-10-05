@@ -4,6 +4,8 @@ import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
 
+from services.sessions_store import SessionStore
+
 class ChatHandler:
     """Handler for managing chat interactions with Bedrock via AWS Lambda."""
     
@@ -19,6 +21,7 @@ class ChatHandler:
         self.default_model_id = os.environ.get(
             "DEFAULT_MODEL_ID", "us.amazon.nova-2-lite-v1:0"
         )
+        self.session_store = SessionStore()
 
     def handle_request(self, event, context):
         """Main entry point for AWS Lambda invocations."""
@@ -35,12 +38,17 @@ class ChatHandler:
             if not user_input:
                 return self._build_response(400, {"error": "Message field cannot be empty."})
 
-            messages = [
+            # For stateful session management provided by frontend
+            session_id = body.get("session_id", "default_session")
+            # DynamoDB history session management
+            history = self.session_store.get_history(session_id=session_id)
+            # Append the new user message to the history
+            history.append(
                 {
                     "role": "user",
                     "content": [{"text": user_input}]
                 }
-            ]
+            )
 
             system_prompts = [
                 {"text": "You are Monitus Companion, a helpful personal assistant."}
@@ -55,15 +63,23 @@ class ChatHandler:
             # Call Bedrock Converse API
             response = self.bedrock_client.converse(
                 modelId=model_id,
-                messages=messages,
+                messages=history,
                 system=system_prompts,
                 inferenceConfig=inference_config
             )
 
             assistant_reply = response["output"]["message"]["content"][0]["text"]
 
+            # Append the assistant's reply to the history
+            history.append({
+                "role": "assistant",
+                "content": [{"text": assistant_reply}]
+            })
+            self.session_store.save_history(session_id=session_id, messages=history)
+
             return self._build_response(200, {
                 "status": "success",
+                "session_id": session_id,
                 "message": assistant_reply,
                 "model_id": model_id
             })
