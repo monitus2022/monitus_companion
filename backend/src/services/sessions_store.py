@@ -7,7 +7,7 @@ class SessionStore:
     """Encapsulates all DynamoDB operations for chat session history."""
 
     def __init__(self, table_name=None, region_name=None, max_history_turns=10, ttl_hours=24):
-        self.table_name = table_name or os.environ.get("SESSION_TABLE", "monitus-chat-sessions")
+        self.table_name = table_name or os.environ.get("SESSIONS_TABLE", "monitus-chat-sessions")
         self.region_name = region_name or os.environ.get("AWS_REGION", "ap-northeast-1")
         self.max_history_turns = max_history_turns
         self.ttl_seconds = ttl_hours * 3600
