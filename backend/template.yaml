@@ -27,7 +27,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
-      Handler: handlers.chat_2.handler
+      Handler: handlers.chat.handler
       Environment:
         Variables:
           SESSIONS_TABLE: !Ref MonitusSessionsTable
