@@ -26,6 +26,24 @@ class ChatHandler:
 
     def handle_request(self, event, context):
         logger.info("Processing incoming chat request...")
+
+        # Determine the HTTP method and route accordingly
+        http_method = event.get("requestContext", {}).get("http", {}).get("method", "POST")
+
+        # If get, return chat history for a given session_id
+        if http_method == "GET":
+            params = event.get("queryStringParameters") or {}
+            session_id = params.get("session_id", "default_session")
+            
+            logger.info(f"Fetching chat history for session_id: '{session_id}'")
+            history = self.session_store.get_history(session_id=session_id)
+            
+            return self._build_response(200, {
+                "status": "success",
+                "session_id": session_id,
+                "history": history
+            })
+
         try:
             body = {}
             if isinstance(event.get("body"), str):

@@ -19,6 +19,7 @@ Resources:
         AllowHeaders:
           - "Content-Type"
         AllowMethods:
+          - "GET"
           - "POST"
           - "OPTIONS"
 
@@ -41,6 +42,12 @@ Resources:
           Properties:
             Path: /chat
             Method: POST
+            ApiId: !Ref MonitusHttpApi
+        GetHistoryEvent:
+          Type: HttpApi
+          Properties:
+            Path: /chat
+            Method: GET
             ApiId: !Ref MonitusHttpApi
 
   # DynamoDB Table with TTL for storing chat history
