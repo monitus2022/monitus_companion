@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Monitus Companion - Stage 1 Simple Chat Lambda
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+
+Resources:
+  # HTTP API Gateway for Monitus Companion
+  MonitusHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - "Content-Type"
+        AllowMethods:
+          - "GET"
+          - "POST"
+          - "OPTIONS"
+
+  # Lambda function for handling chat requests
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.chat.handler
+      Environment:
+        Variables:
+          SESSIONS_TABLE: !Ref MonitusSessionsTable
+      Policies:
+        - AmazonBedrockFullAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MonitusSessionsTable
+      Events:
+        ChatApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /chat
+            Method: POST
+            ApiId: !Ref MonitusHttpApi
+        GetHistoryEvent:
+          Type: HttpApi
+          Properties:
+            Path: /chat
+            Method: GET
+            ApiId: !Ref MonitusHttpApi
+
+  # DynamoDB Table with TTL for storing chat history
+  MonitusSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: monitus-chat-sessions
+      AttributeDefinitions:
+        - AttributeName: session_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: session_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+Outputs:
+  ChatApiEndpoint:
+    Description: "HTTP API Gateway endpoint URL for Stage 1 Chat"
+    Value: !Sub "https://${MonitusHttpApi}.execute-api.${AWS::Region}.amazonaws.com/chat"
