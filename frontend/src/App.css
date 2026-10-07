@@ -147,6 +147,7 @@
 .markdown-content p {
   margin: 0 0 8px 0;
   line-height: 1.5;
+  color: #1a1a1a;
 }
 
 .markdown-content p:last-child {
@@ -159,6 +160,7 @@
   margin: 12px 0 6px 0;
   font-size: 1.1em;
   font-weight: bold;
+  color: #1a1a1a;
 }
 
 .markdown-content ul, 
