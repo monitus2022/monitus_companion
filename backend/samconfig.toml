@@ -4,6 +4,7 @@ version = 0.1
 region = "ap-northeast-1"
 confirm_changeset = false
 fail_on_empty_changeset = false
+capabilities = "CAPABILITY_IAM"
 resolve_s3 = true
 
 [default.global.parameters]
@@ -15,6 +16,7 @@ stack_name = "monitus-backend-dev"
 s3_prefix = "monitus-backend-dev"
 parameter_overrides = "Stage=\"dev\""
 capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
 
 # --- PROD ENVIRONMENT ---
 [prod.deploy.parameters]
@@ -22,3 +24,4 @@ stack_name = "monitus-backend-prod"
 s3_prefix = "monitus-backend-prod"
 parameter_overrides = "Stage=\"prod\""
 capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
