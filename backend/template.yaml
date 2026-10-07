@@ -1,12 +1,24 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Monitus Companion - Stage 1 Simple Chat Lambda
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Deployment stage environment
 
 Globals:
   Function:
     Timeout: 30
     MemorySize: 512
     Runtime: python3.12
+    Environment:
+      Variables:
+        Stage: !Ref Stage
+        USER_MEMORY_TABLE: !Ref UserMemoryTable
 
 Resources:
   # HTTP API Gateway for Monitus Companion
@@ -54,7 +66,7 @@ Resources:
   MonitusSessionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: monitus-chat-sessions
+      TableName: !Sub "monitus-chat-sessions-${Stage}"
       AttributeDefinitions:
         - AttributeName: session_id
           AttributeType: S
@@ -72,7 +84,7 @@ Resources:
   UserMemoryTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: monitus-user-memory
+      TableName: !Sub "monitus-user-memory-${Stage}"
       AttributeDefinitions:
         - AttributeName: user_id
           AttributeType: S
