@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => {
     ? env.VITE_CHAT_API_URL_PROD
     : (env.VITE_CHAT_API_URL_DEV || env.VITE_CHAT_API_URL);
 
+  console.log(`[Vite Build] Branch: "${branch}" | Target API URL: "${activeApiUrl}"`);
+
   return {
     plugins: [react()],
     define: {
