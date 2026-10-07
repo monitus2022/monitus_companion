@@ -21,7 +21,6 @@ Globals:
         USER_MEMORY_TABLE: !Ref UserMemoryTable
 
 Resources:
-  # HTTP API Gateway for Monitus Companion
   MonitusHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -35,7 +34,6 @@ Resources:
           - "POST"
           - "OPTIONS"
 
-  # Lambda function for handling chat requests
   ChatFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -62,11 +60,9 @@ Resources:
             Method: GET
             ApiId: !Ref MonitusHttpApi
 
-  # DynamoDB Table with TTL for storing chat history
   MonitusSessionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "monitus-chat-sessions-${Stage}"
       AttributeDefinitions:
         - AttributeName: session_id
           AttributeType: S
@@ -78,13 +74,11 @@ Resources:
         AttributeName: ttl
         Enabled: true
       StreamSpecification:
-        StreamViewType: NEW_IMAGE # Streaming support for chat history
-  
-  # Semantic Memory Table for storing embeddings
+        StreamViewType: NEW_IMAGE
+
   UserMemoryTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "monitus-user-memory-${Stage}"
       AttributeDefinitions:
         - AttributeName: user_id
           AttributeType: S
@@ -97,12 +91,11 @@ Resources:
           KeyType: RANGE
       BillingMode: PAY_PER_REQUEST
 
-  # Memory Extractor Lambda function
   MemoryExtractorFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
-      Handler: handlers/extractor.handler
+      Handler: handlers.extractor.handler
       Runtime: python3.12
       Timeout: 30
       Policies:
@@ -119,5 +112,5 @@ Resources:
 
 Outputs:
   ChatApiEndpoint:
-    Description: "HTTP API Gateway endpoint URL for Stage 1 Chat"
+    Description: "HTTP API Gateway endpoint URL"
     Value: !Sub "https://${MonitusHttpApi}.execute-api.${AWS::Region}.amazonaws.com/chat"

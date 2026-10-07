@@ -52,6 +52,6 @@ jobs:
         working-directory: ./backend
         run: |
           sam deploy \
+            --config-env ${{ env.ENV_NAME }} \
             --no-confirm-changeset \
-            --no-fail-on-empty-changeset \
-            --capabilities CAPABILITY_IAM
+            --no-fail-on-empty-changeset

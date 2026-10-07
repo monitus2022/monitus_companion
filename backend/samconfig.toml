@@ -9,7 +9,6 @@ confirm_changeset = false
 fail_on_empty_changeset = false
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
-disable_rollback = true
 
 [default.global.parameters]
 region = "ap-northeast-1"
