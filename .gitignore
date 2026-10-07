@@ -9,6 +9,8 @@
 
 # Backend
 *.env
+*.env.development
+*.env.production
 venv/
 
 # Frontend
