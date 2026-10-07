@@ -1,5 +1,9 @@
 const API_ENDPOINT = import.meta.env.VITE_CHAT_API_URL;
 
+if (!API_ENDPOINT || API_ENDPOINT === 'undefined') {
+  console.error("Chat API URL is undefined!");
+}
+
 export async function fetchChatHistory(sessionId) {
     try {
         const response = await fetch(`${API_ENDPOINT}?session_id=${encodeURIComponent(sessionId)}`);
