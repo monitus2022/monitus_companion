@@ -70,7 +70,11 @@ class ChatHandler:
 
             # 2. Retrieve Persistent Facts
             user_facts = self._get_user_facts(user_id=session_id)
-            system_text = "You are Monitus Companion, a helpful personal assistant."
+            system_text = """
+                You are Monitus Companion, a helpful AI assistant.
+                Keep your responses clear, focused, and concise.
+                Never exceed 500 words, and always ensure your final sentence is completely finished.
+            """
 
             if user_facts:
                 logger.info(f"Injecting {len(user_facts)} retrieved facts into system prompt.")
@@ -78,7 +82,7 @@ class ChatHandler:
                 system_text += f"\n\n[Known User Facts & Preferences]:\n{facts_formatted}"
 
             system_prompts = [{"text": system_text}]
-            inference_config = {"maxTokens": 1000, "temperature": 0.7, "topP": 0.9}
+            inference_config = {"maxTokens": 4096, "temperature": 0.7, "topP": 0.9}
 
             # 3. Invoke Model
             logger.info(f"Sending payload with {len(history)} messages to Bedrock...")
