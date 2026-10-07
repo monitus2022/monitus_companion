@@ -38,3 +38,5 @@ VITE_CHAT_API_URL=https://<characters>.execute-api.<zone>.amazonaws.com
 ```bash
 npm run dev
 ```
+
+Note: On production environment, config env variable on page host (Github/Cloudflare)
