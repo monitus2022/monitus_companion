@@ -16,7 +16,7 @@ class ChatHandler:
         self.region = os.environ.get("AWS_REGION", "ap-northeast-1")
         self.bedrock_client = boto3.client(
             "bedrock-runtime", 
-            region_name="us-east-1", 
+            region_name=os.environ.get("BEDROCK_REGION", "us-east-1"), 
             config=Config(read_timeout=60)
         )
         self.default_model_id = os.environ.get(
@@ -24,13 +24,16 @@ class ChatHandler:
         )
         self.session_store = SessionStore()
 
+        # User Memory Table
+        self.memory_table_name = os.environ.get("USER_MEMORY_TABLE", "monitus-user-memory")
+        self.dynamodb = boto3.resource("dynamodb", region_name=self.region)
+        self.memory_table = self.dynamodb.Table(self.memory_table_name)
+
     def handle_request(self, event, context):
         logger.info("Processing incoming chat request...")
 
-        # Determine the HTTP method and route accordingly
         http_method = event.get("requestContext", {}).get("http", {}).get("method", "POST")
 
-        # If get, return chat history for a given session_id
         if http_method == "GET":
             params = event.get("queryStringParameters") or {}
             session_id = params.get("session_id", "default_session")
@@ -65,10 +68,19 @@ class ChatHandler:
             history = self.session_store.get_history(session_id=session_id)
             history.append({"role": "user", "content": [{"text": user_input}]})
 
-            system_prompts = [{"text": "You are Monitus Companion, a helpful personal assistant."}]
+            # 2. Retrieve Persistent Facts
+            user_facts = self._get_user_facts(user_id=session_id)
+            system_text = "You are Monitus Companion, a helpful personal assistant."
+
+            if user_facts:
+                logger.info(f"Injecting {len(user_facts)} retrieved facts into system prompt.")
+                facts_formatted = "\n".join([f"- [{f.get('category', 'general')}] {f['fact']}" for f in user_facts])
+                system_text += f"\n\n[Known User Facts & Preferences]:\n{facts_formatted}"
+
+            system_prompts = [{"text": system_text}]
             inference_config = {"maxTokens": 1000, "temperature": 0.7, "topP": 0.9}
 
-            # 2. Invoke Model
+            # 3. Invoke Model
             logger.info(f"Sending payload with {len(history)} messages to Bedrock...")
             response = self.bedrock_client.converse(
                 modelId=model_id,
@@ -80,7 +92,7 @@ class ChatHandler:
             assistant_reply = response["output"]["message"]["content"][0]["text"]
             logger.info("Received model response successfully.")
 
-            # 3. Save History
+            # 4. Save History
             history.append({"role": "assistant", "content": [{"text": assistant_reply}]})
             self.session_store.save_history(session_id=session_id, messages=history)
 
@@ -99,6 +111,17 @@ class ChatHandler:
         except Exception as e:
             logger.exception("Unhandled exception caught during request handling")
             return self._build_response(500, {"error": f"An unexpected error occurred: {str(e)}"})
+
+    def _get_user_facts(self, user_id: str) -> list:
+        """Queries DynamoDB for all facts associated with user_id/session_id."""
+        try:
+            response = self.memory_table.query(
+                KeyConditionExpression=boto3.dynamodb.conditions.Key("user_id").eq(user_id)
+            )
+            return response.get("Items", [])
+        except Exception as e:
+            logger.warning(f"Failed to fetch user facts from memory table: {str(e)}")
+            return []
 
     def _build_response(self, status_code, body_dict):
         return {

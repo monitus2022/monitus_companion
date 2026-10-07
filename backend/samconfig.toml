@@ -12,3 +12,15 @@ disable_rollback = true
 
 [default.global.parameters]
 region = "ap-northeast-1"
+
+# --- DEV ENVIRONMENT ---
+[dev.deploy.parameters]
+stack_name = "monitus-backend-dev"
+resolve_s3 = true
+parameter_overrides = "Stage=\"dev\""
+
+# --- PROD ENVIRONMENT ---
+[prod.deploy.parameters]
+stack_name = "monitus-backend-prod"
+resolve_s3 = true
+parameter_overrides = "Stage=\"prod\""
