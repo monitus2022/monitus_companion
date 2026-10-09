@@ -47,8 +47,7 @@ class ExtractorHandler:
         extracted_facts_count = 0
 
         for record in records:
-            # Process strictly new database writes
-            if record.get("eventName") != "INSERT" and record.get("eventName") != "MODIFY":
+            if record.get("eventName") not in ["INSERT", "MODIFY"]:
                 continue
 
             try:
@@ -61,14 +60,14 @@ class ExtractorHandler:
 
                 logger.info(f"Analyzing message for memory extraction: '{user_text[:50]}...'")
 
-                # Single-pass LLM extraction
                 facts = self._extract_facts_with_llm(user_text)
 
                 if facts:
-                    session_id = new_image.get("session_id", {}).get("S", "default_user")
-                    self._save_facts(user_id=session_id, facts=facts)
+                    session_id = new_image.get("session_id", {}).get("S", "unknown_session")
+                    # Store under permanent user partition ('default_user') while referencing source session
+                    self._save_facts(user_id="default_user", session_id=session_id, facts=facts)
                     extracted_facts_count += len(facts)
-                    logger.info(f"Saved {len(facts)} fact(s) for user/session '{session_id}'.")
+                    logger.info(f"Saved {len(facts)} fact(s) extracted from session '{session_id}'.")
                 else:
                     logger.info("No long-term facts detected in message.")
 
@@ -103,7 +102,13 @@ class ExtractorHandler:
             inferenceConfig=inference_config
         )
 
-        output_text = response["output"]["message"]["content"][0]["text"]
+        output_text = response["output"]["message"]["content"][0]["text"].strip()
+
+        # Clean Markdown code block wrappers before parsing JSON
+        if output_text.startswith("```json"):
+            output_text = output_text.replace("```json", "", 1).rstrip("`").strip()
+        elif output_text.startswith("```"):
+            output_text = output_text.replace("```", "", 1).rstrip("`").strip()
 
         try:
             data = json.loads(output_text)
@@ -112,36 +117,57 @@ class ExtractorHandler:
             logger.warning(f"Failed to parse JSON from Bedrock output: {output_text}")
             return []
 
-    def _save_facts(self, user_id: str, facts: list):
-        """Persists extracted facts to the monitus-user-memory DynamoDB table."""
+    def _save_facts(self, user_id: str, session_id: str, facts: list):
+        """Persists extracted facts to the UserMemoryTable using correct 'fact_id' Sort Key."""
         with self.memory_table.batch_writer() as batch:
             for item in facts:
                 fact_text = item.get("fact", "")
                 if not fact_text:
                     continue
 
-                # Create deterministic hash-based memory_id to avoid duplicate writes
+                # Create deterministic hash-based fact_id to deduplicate identical writes
                 fact_hash = hashlib.sha256(fact_text.lower().encode("utf-8")).hexdigest()[:12]
-                memory_id = f"fact#{fact_hash}"
+                fact_id = f"fact#{fact_hash}"
 
                 batch.put_item(
                     Item={
-                        "user_id": user_id,
-                        "memory_id": memory_id,
+                        "user_id": user_id,            # Partition Key
+                        "fact_id": fact_id,            # Sort Key matching template.yaml
                         "category": item.get("category", "general"),
-                        "fact": fact_text
+                        "fact": fact_text,
+                        "source_session": session_id
                     }
                 )
 
     def _extract_user_text_from_image(self, new_image: dict) -> str:
-        """Parses DynamoDB stream image to extract the latest user input."""
-        # Case 1: Session store saves array of messages under "messages"
-        if "messages" in new_image and "L" in new_image["messages"]:
-            msg_list = new_image["messages"]["L"]
-            for msg in reversed(msg_list):
-                msg_map = msg.get("M", {})
-                role = msg_map.get("role", {}).get("S", "")
-                if role == "user":
-                    content = msg_map.get("content", {}).get("L", [])
-                    if content and "M" in content[0]:
-                        return content[0]["M"].get("text", {}).get("S", "")
+        """Parses DynamoDB stream image to extract the latest user input (supports both history & messages)."""
+        msg_list_raw = new_image.get("messages", {}).get("L") or new_image.get("history", {}).get("L")
+        
+        if not msg_list_raw:
+            return ""
+
+        for msg in reversed(msg_list_raw):
+            msg_map = msg.get("M", {})
+            role = msg_map.get("role", {}).get("S", "")
+            
+            if role == "user":
+                # Check standard Bedrock content array structure: [{"M": {"text": {"S": "..."}}}]
+                content_list = msg_map.get("content", {}).get("L", [])
+                if content_list and "M" in content_list[0]:
+                    text_val = content_list[0]["M"].get("text", {}).get("S", "")
+                    if text_val:
+                        return text_val
+                
+                # Check flat text structure: {"text": {"S": "..."}}
+                flat_text = msg_map.get("text", {}).get("S", "")
+                if flat_text:
+                    return flat_text
+
+        return ""
+
+
+# Top-level module handler exported for AWS Lambda runtime
+_handler_instance = ExtractorHandler()
+
+def handler(event, context):
+    return _handler_instance.handle_request(event, context)
