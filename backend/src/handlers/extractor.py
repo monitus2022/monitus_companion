@@ -11,7 +11,7 @@ logger = get_logger("ExtractorHandler")
 
 EXTRACTION_SYSTEM_PROMPT = (
     "You are a memory extraction sub-agent. Analyze the user's message and identify any long-term facts, "
-    "core preferences, technical stack choices, or personal details worth remembering.\n\n"
+    "core preferences, technical stack choices, or personal details worth remembering.\n"
     "Rules:\n"
     "1. ONLY extract clear, enduring facts about the user (e.g., programming languages, project goals, hardware, daily routines).\n"
     "2. Ignore transient conversational chatter, greetings, or questions directed at the assistant.\n"
