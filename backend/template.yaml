@@ -1,116 +1,144 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
+Description: Monitus Companion - Stage 2 Multi-Environment SAM Stack with Persistent Memory Engine
 
 Parameters:
   Stage:
     Type: String
     Default: dev
-    AllowedValues:
-      - dev
-      - prod
-    Description: Deployment stage environment
+    AllowedValues: [dev, prod]
+    Description: Deployment environment stage
 
 Globals:
   Function:
     Timeout: 30
-    MemorySize: 512
+    MemorySize: 256
     Runtime: python3.12
+    Architectures:
+      - x86_64
     Environment:
       Variables:
-        Stage: !Ref Stage
+        STAGE: !Ref Stage
+        CHAT_TABLE: !Ref ChatTable
         USER_MEMORY_TABLE: !Ref UserMemoryTable
+        BEDROCK_MODEL_ID: "us.amazon.nova-2-lite-v1:0"
 
 Resources:
+  # -------------------------------------------------------------------
+  # 1. API Gateway (HTTP API)
+  # -------------------------------------------------------------------
   MonitusHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      StageName: !Ref Stage
       CorsConfiguration:
         AllowOrigins:
           - "*"
         AllowHeaders:
           - "Content-Type"
+          - "Authorization"
         AllowMethods:
           - "GET"
           - "POST"
           - "OPTIONS"
 
+  # -------------------------------------------------------------------
+  # 2. DynamoDB Tables
+  # -------------------------------------------------------------------
+  # Short-Term Session Store (48-hr TTL + DynamoDB Stream Enabled)
+  ChatTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "monitus-chat-sessions-${Stage}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: session_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: session_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # Long-Term Semantic Memory Store
+  UserMemoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "monitus-user-memory-${Stage}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: fact_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: fact_id
+          KeyType: RANGE
+
+  # -------------------------------------------------------------------
+  # 3. Lambda Functions
+  # -------------------------------------------------------------------
+  # Core Chat Handler (Synchronous API Gateway Integration)
   ChatFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
-      Handler: handlers.chat.handler
-      Environment:
-        Variables:
-          SESSIONS_TABLE: !Ref MonitusSessionsTable
-      Policies:
-        - AmazonBedrockFullAccess
-        - DynamoDBCrudPolicy:
-            TableName: !Ref MonitusSessionsTable
+      Handler: handlers/chat.handler
       Events:
-        ChatApiEvent:
-          Type: HttpApi
-          Properties:
-            Path: /chat
-            Method: POST
-            ApiId: !Ref MonitusHttpApi
-        GetHistoryEvent:
+        GetHistory:
           Type: HttpApi
           Properties:
             Path: /chat
             Method: GET
             ApiId: !Ref MonitusHttpApi
+        SendMessage:
+          Type: HttpApi
+          Properties:
+            Path: /chat
+            Method: POST
+            ApiId: !Ref MonitusHttpApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserMemoryTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
 
-  MonitusSessionsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      AttributeDefinitions:
-        - AttributeName: session_id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: session_id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
-      StreamSpecification:
-        StreamViewType: NEW_IMAGE
-
-  UserMemoryTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      AttributeDefinitions:
-        - AttributeName: user_id
-          AttributeType: S
-        - AttributeName: memory_id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: user_id
-          KeyType: HASH
-        - AttributeName: memory_id
-          KeyType: RANGE
-      BillingMode: PAY_PER_REQUEST
-
-  MemoryExtractorFunction:
+  # Async Fact Extractor Handler (DynamoDB Stream Integration)
+  ExtractorFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
-      Handler: handlers.extractor.handler
-      Runtime: python3.12
-      Timeout: 30
-      Policies:
-        - AmazonBedrockFullAccess
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UserMemoryTable
+      Handler: handlers/extractor.handler
       Events:
-        SessionStream:
+        StreamEvent:
           Type: DynamoDB
           Properties:
-            Stream: !GetAtt MonitusSessionsTable.StreamArn
-            StartingPosition: LATEST
+            Stream: !GetAtt ChatTable.StreamArn
+            StartingPosition: TRIM_HORIZON
             BatchSize: 1
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName": ["INSERT", "MODIFY"]}'
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserMemoryTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
 
 Outputs:
-  ChatApiEndpoint:
+  ApiEndpoint:
     Description: "HTTP API Gateway endpoint URL"
-    Value: !Sub "https://${MonitusHttpApi}.execute-api.${AWS::Region}.amazonaws.com/chat"
+    Value: !Sub "https://${MonitusHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
